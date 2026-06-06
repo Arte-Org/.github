@@ -6,12 +6,28 @@ on:
       issue_number:
         required: true
         type: string
+      issue_title:
+        required: true
+        type: string
+      issue_body:
+        required: true
+        type: string
+      issue_author:
+        required: true
+        type: string
       repo:
         required: true
         type: string
+      owner:
+        required: true
+        type: string
+      auto_merge:
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   solve:
     runs-on: [self-hosted, issue-solver]
     steps:
-      - run: echo "issue=${{ inputs.issue_number }} repo=${{ inputs.repo }}"
+      - run: echo "issue=${{ inputs.issue_number }} repo=${{ inputs.repo }} author=${{ inputs.issue_author }}"
