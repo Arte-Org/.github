@@ -41,7 +41,7 @@ on:
 jobs:
   solve:
     name: "Issue #${{ inputs.issue_number }} — ${{ inputs.repo }}"
-    runs-on: [self-hosted, issue-solver]
+    runs-on: ubuntu-latest
 
     concurrency:
       group: solve-${{ inputs.owner }}-${{ inputs.repo }}-${{ inputs.issue_number }}
