@@ -1,0 +1,20 @@
+name: Issue Solver
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  solve:
+    # Solo dispara cuando el label agregado es exactamente "claude:auto"
+    if: github.event.label.name == 'claude:auto'
+    uses: ${{ github.repository_owner }}/.github/.github/workflows/r-issue.yml@main
+    with:
+      issue_number: ${{ github.event.issue.number }}
+      issue_title:  ${{ github.event.issue.title }}
+      issue_body:   ${{ github.event.issue.body || '' }}
+      issue_author: ${{ github.event.issue.user.login }}
+      repo:         ${{ github.event.repository.name }}
+      owner:        ${{ github.repository_owner }}
+      auto_merge:   true
+    secrets: inherit

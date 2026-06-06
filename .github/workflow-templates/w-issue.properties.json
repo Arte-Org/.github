@@ -1,0 +1,6 @@
+{
+  "name": "Issue Solver — Claude Code",
+  "description": "Resuelve issues automáticamente con Claude Code cuando se agrega el label claude:auto. Requiere GitHub App issue-solver-bot instalada en el repo.",
+  "iconName": "octicon workflow",
+  "categories": ["Automation", "AI"]
+}
