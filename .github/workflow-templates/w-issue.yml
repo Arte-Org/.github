@@ -8,7 +8,7 @@ jobs:
   solve:
     # Solo dispara cuando el label agregado es exactamente "claude:auto"
     if: github.event.label.name == 'claude:auto'
-    uses: ${{ github.repository_owner }}/.github/.github/workflows/r-issue.yml@main
+    uses: Arte-Org/.github/.github/workflows/r-issue.yml@main
     with:
       issue_number: ${{ github.event.issue.number }}
       issue_title:  ${{ github.event.issue.title }}
