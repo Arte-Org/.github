@@ -6,13 +6,13 @@ on:
       issue_number:
         description: Número del issue
         required: true
-        type: number
+        type: string
       issue_title:
         description: Título del issue
         required: true
         type: string
       issue_body:
-        description: Cuerpo del issue (sanitizado antes de pasarlo al prompt)
+        description: Cuerpo del issue
         required: true
         type: string
       issue_author:
@@ -63,7 +63,7 @@ jobs:
           owner: ${{ inputs.owner }}
           repositories: ${{ inputs.repo }}
 
-      # ── 2. Validar rol del autor (solo write/maintain/admin) ───────────────
+      # ── 2. Validar rol del autor ───────────────────────────────────────────
       - name: Validate author permissions
         id: perms
         env:
@@ -72,9 +72,7 @@ jobs:
           ROLE=$(gh api \
             "repos/${{ inputs.owner }}/${{ inputs.repo }}/collaborators/${{ inputs.issue_author }}/permission" \
             --jq '.role_name' 2>/dev/null || echo "none")
-
           echo "role=$ROLE" >> "$GITHUB_OUTPUT"
-
           case "$ROLE" in
             write|maintain|admin) echo "authorized=true"  >> "$GITHUB_OUTPUT" ;;
             *)                    echo "authorized=false" >> "$GITHUB_OUTPUT" ;;
@@ -87,7 +85,7 @@ jobs:
         run: |
           gh issue comment "${{ inputs.issue_number }}" \
             --repo "${{ inputs.owner }}/${{ inputs.repo }}" \
-            --body $'⚠️ **Issue Solver:** El label \`claude:auto\` requiere rol \`write\` o superior.\nRol detectado de **${{ inputs.issue_author }}**: \`${{ steps.perms.outputs.role }}\`.'
+            --body "⚠️ **Issue Solver:** El label \`claude:auto\` requiere rol \`write\` o superior. Rol detectado de **${{ inputs.issue_author }}**: \`${{ steps.perms.outputs.role }}\`."
 
       # ── 3. Checkout del repo fuente ────────────────────────────────────────
       - name: Checkout source repo
@@ -98,7 +96,7 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           path: source-repo
 
-      # ── 4. Crear rama fix/issue-N ──────────────────────────────────────────
+      # ── 4. Crear rama ──────────────────────────────────────────────────────
       - name: Create fix branch
         if: steps.perms.outputs.authorized == 'true'
         id: branch
@@ -108,47 +106,44 @@ jobs:
           git checkout -b "$BRANCH"
           echo "name=$BRANCH" >> "$GITHUB_OUTPUT"
 
-      # ── 5. Escribir contexto del issue a archivo (evita interpolación) ─────
+      # ── 5. Escribir contexto del issue a archivo ───────────────────────────
       - name: Write issue context to file
         if: steps.perms.outputs.authorized == 'true'
         env:
           ISSUE_BODY: ${{ inputs.issue_body }}
-          ISSUE_TITLE: ${{ inputs.issue_title }}
         run: |
-          {
-            printf '# Issue #%s: %s\n\n' "${{ inputs.issue_number }}" "$ISSUE_TITLE"
-            printf '**Repo:** %s/%s\n' "${{ inputs.owner }}" "${{ inputs.repo }}"
-            printf '**Autor:** %s\n\n' "${{ inputs.issue_author }}"
-            printf '## Descripción\n\n'
-            printf '%s\n' "$ISSUE_BODY"
-          } > /tmp/issue-context.md
+          printf '# Issue #%s: %s\n\nRepo: %s/%s\nAutor: %s\n\n## Descripción\n\n%s\n' \
+            "${{ inputs.issue_number }}" \
+            "${{ inputs.issue_title }}" \
+            "${{ inputs.owner }}" \
+            "${{ inputs.repo }}" \
+            "${{ inputs.issue_author }}" \
+            "$ISSUE_BODY" > /tmp/issue-context.md
 
       # ── 6. Claude Code ─────────────────────────────────────────────────────
       - name: Run Claude Code
         if: steps.perms.outputs.authorized == 'true'
         working-directory: source-repo
         run: |
-          PROMPT="Eres un ingeniero de software resolviendo un issue de GitHub.
+          claude -p "Eres un ingeniero de software resolviendo un issue de GitHub.
 
-          El contexto completo del issue está en el archivo /tmp/issue-context.md — léelo primero.
+          El contexto del issue está en /tmp/issue-context.md — léelo primero.
 
           Repositorio: ${{ inputs.owner }}/${{ inputs.repo }}
 
           Instrucciones:
           1. Lee /tmp/issue-context.md para entender el issue
-          2. Explora los archivos del repo relevantes para el issue
-          3. Implementa el fix mínimo necesario — sin features extra, sin refactors, sin comentarios innecesarios
-          4. Verifica con 'git diff' que tus cambios son correctos
-          5. Si no hay solución clara en el código, responde exactamente la línea: NO_SOLUTION_FOUND
+          2. Explora los archivos relevantes del repo
+          3. Implementa el fix mínimo necesario
+          4. Verifica con git diff que los cambios son correctos
+          5. Si no hay solución clara, responde: NO_SOLUTION_FOUND
 
-          No hagas commit ni push — solo aplica los cambios al árbol de trabajo."
-
-          claude -p "$PROMPT" \
+          No hagas commit ni push." \
             --permission-mode dontAsk \
             --model claude-sonnet-4-6 \
             2>&1 | tee /tmp/claude-output.log
 
-      # ── 7. Subir log de razonamiento como artifact ─────────────────────────
+      # ── 7. Artifact con reasoning ──────────────────────────────────────────
       - name: Upload reasoning log
         if: steps.perms.outputs.authorized == 'true'
         uses: actions/upload-artifact@v4
@@ -157,7 +152,7 @@ jobs:
           path: /tmp/claude-output.log
           retention-days: 30
 
-      # ── 8. Detectar si hay cambios ─────────────────────────────────────────
+      # ── 8. Detectar cambios ────────────────────────────────────────────────
       - name: Check for changes
         if: steps.perms.outputs.authorized == 'true'
         id: changes
@@ -176,9 +171,7 @@ jobs:
         run: |
           gh issue comment "${{ inputs.issue_number }}" \
             --repo "${{ inputs.owner }}/${{ inputs.repo }}" \
-            --body "🤖 **Issue Solver:** No encontré una solución automática para este issue. Se requiere revisión manual.
-
-          [Ver razonamiento completo](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            --body "🤖 **Issue Solver:** No encontré una solución automática. Se requiere revisión manual. [Ver razonamiento](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
 
       # ── 9. Commit y push ───────────────────────────────────────────────────
       - name: Commit and push
@@ -214,16 +207,12 @@ jobs:
           > Generado por [Issue Solver](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) · Claude Code \`claude-sonnet-4-6\`" \
             --head "${{ steps.branch.outputs.name }}" \
             --base main)
-
           echo "url=$PR_URL" >> "$GITHUB_OUTPUT"
           echo "number=$(echo "$PR_URL" | grep -oE '[0-9]+$')" >> "$GITHUB_OUTPUT"
 
-      # ── 11. Auto-merge (opcional) ──────────────────────────────────────────
+      # ── 11. Auto-merge ─────────────────────────────────────────────────────
       - name: Enable auto-merge
-        if: |
-          steps.perms.outputs.authorized == 'true' &&
-          steps.changes.outputs.has_changes == 'true' &&
-          inputs.auto_merge == true
+        if: steps.perms.outputs.authorized == 'true' && steps.changes.outputs.has_changes == 'true' && inputs.auto_merge == true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
@@ -233,16 +222,16 @@ jobs:
             --squash \
             --delete-branch
 
-      # ── 12. Comentar resultado en el issue ─────────────────────────────────
+      # ── 12. Comentar resultado ─────────────────────────────────────────────
       - name: Comment — result
         if: steps.perms.outputs.authorized == 'true' && steps.changes.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           if [ "${{ inputs.auto_merge }}" = "true" ]; then
-            BODY="✅ **Issue Solver:** PR creado y configurado para **auto-merge** cuando CI pase → ${{ steps.pr.outputs.url }}"
+            BODY="✅ **Issue Solver:** PR creado con auto-merge activado → ${{ steps.pr.outputs.url }}"
           else
-            BODY="🔍 **Issue Solver:** PR listo para revisión humana → ${{ steps.pr.outputs.url }}"
+            BODY="🔍 **Issue Solver:** PR listo para revisión → ${{ steps.pr.outputs.url }}"
           fi
           gh issue comment "${{ inputs.issue_number }}" \
             --repo "${{ inputs.owner }}/${{ inputs.repo }}" \
