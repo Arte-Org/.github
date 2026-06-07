@@ -25,6 +25,11 @@ on:
         required: false
         type: boolean
         default: false
+    secrets:
+      APP_ID:
+        required: false
+      APP_PRIVATE_KEY:
+        required: false
 
 jobs:
   solve:
@@ -39,7 +44,7 @@ jobs:
       # ── 1. Token efímero de la GitHub App ──────────────────────────────────
       - name: Generate GitHub App token
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
